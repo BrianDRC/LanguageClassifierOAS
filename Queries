@@ -1,0 +1,7 @@
+-- SQLite
+-- Count SPAM by IP
+SELECT ip as IP, count(*) as Quantity FROM data GROUP BY ip HAVING COUNT(*) > 1
+ORDER BY quantity DESC;
+
+-- 
+SELECT * FROM data WHERE ip = '168.197.26.118' AND country NOT LIKE 'BR';
