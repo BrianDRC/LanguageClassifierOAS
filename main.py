@@ -13,15 +13,17 @@ from polyglot.detect.base import UnknownLanguage
 from os import listdir
 from os.path import isfile, join
 
+from glob import glob
+from numba import jit, cuda
+import numpy as np
+
 import csv
-import pandas
+#import pandas
 import sys
 
 polyglot_logger.setLevel("ERROR")
 
-start_time_global = time.time()
-
-def main():
+def main2():
     args = sys.argv
     if(len(args) > 2):
         if(args[1] == "db"):
@@ -42,7 +44,8 @@ def main():
             connection.close()
     
     if(args[1] == "process"):
-        preProcess()
+        print()
+        #preProcess()
    
 def loadLanguages(connection):
     LanguagesCleaned = list(dict.fromkeys(constants.LANGUAGES))
@@ -73,18 +76,16 @@ def incrementLanguage(connection, lang):
 def insertData(connection, date, ip, domain, country, sender, subject, language, confidence, translate_subject):
     database.insert(connection, 'data', [f"\"{date}\"", f"\"{ip}\"", f"\"{domain}\"", f"\"{country}\"", f"\"{sender}\"", f"\"{subject}\"", f"\"{language}\"", f"\"{confidence}\"", f"\"{translate_subject}\""])
 
-def preProcess():
-    subdirectories = utils.getPathFolders(constants.PATH)
+#@jit
+def main():
 
-    for i in subdirectories:
-        print(f'Folder: {i}')
-        fullpath = f'{constants.PATH}/{i}'
-        files = [f for f in listdir(fullpath) if isfile(join(fullpath, f))]
-        for file in files:
-            print(f"\tReading: {file}")
-            filepath = f'{fullpath}/{file}'
-            process(filepath)
-            #print(f'\t{file}')
+    list_csvs = glob("./Feeds/**/*.csv",recursive = True)
+
+    #subdirectories = utils.getPathFolders(constants.PATH)
+
+    for file in list_csvs:
+        process(file)
+        print(f'\t{file}')
 
 #df = pandas.read_csv('./Feeds/20220325-spam_account-AR.csv', engine="pyarrow")
 #print(df)
@@ -106,7 +107,7 @@ def preProcess():
 def process(file):
     
     with open(file) as csv_file:
-        connection = database.connect()
+        #connection = database.connect()
         start_time_file = time.time()
 
         csv_reader = csv.reader(csv_file, delimiter=',')
@@ -118,16 +119,15 @@ def process(file):
                     line_count += 1
                 else:
                     #print(f'\t FROM: {row[8]} / IP: {row[2]} / SUBJECT: {row[9]}.')
-                    incrementCountry(connection, row[5])
+                    #incrementCountry(connection, row[5])
                     detector = Detector(utils.remove_bad_chars(row[9]), quiet=True)
-                    #print(detector.language)
-                    incrementLanguage(connection, detector.language.name)
-                    insertData(connection, row[1], row[2], row[7], row[5], row[8], utils.remove_bad_chars(row[9]).replace("\"", "\'"), detector.language.name, detector.language.confidence, '')
+                    #incrementLanguage(connection, detector.language.name)
+                    #insertData(connection, row[1], row[2], row[7], row[5], row[8], utils.remove_bad_chars(row[9]).replace("\"", "\'"), detector.language.name, detector.language.confidence, '')
                     #print(f'\t', detector.language, '\n')
                     line_count += 1
-            database.disconnect(connection)
+            #database.disconnect(connection)
         except csv.Error:
-            database.disconnect(connection)
+            #database.disconnect(connection)
             print(f"An exception occurred at line {csv_reader.line_num} in file {file}")
         
 
@@ -139,5 +139,3 @@ def process(file):
     
 
 main()
-print("--- %s ms ---" % ((time.time() - start_time_global) * 1000))
-print()
