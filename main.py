@@ -1,94 +1,52 @@
-# -*- coding: utf-8 -*-
-# usr/.local/bin
 import time
 
 import utils
-import constants
-import database
+from pymongo import MongoClient
 
 from polyglot.detect import Detector
 from polyglot.utils import pretty_list
 from polyglot.detect.base import logger as polyglot_logger
 from polyglot.detect.base import UnknownLanguage
-from os import listdir
-from os.path import isfile, join
+
+from numba import jit, cuda
 
 from glob import glob
-from numba import jit, cuda
-import numpy as np
-
 import csv
 #import pandas
-import sys
 
 polyglot_logger.setLevel("ERROR")
 
-def main2():
-    args = sys.argv
-    if(len(args) > 2):
-        if(args[1] == "db"):
-            connection = database.connect()
-            if(args[2] == "createtables"):
-                print("Crating Tables")
-                database.dropTable(connection, 'data')
-                database.createTable(connection, 'data', ['date TEXT', 'ip TEXT', 'domain TEXT', 'country TEXT', 'sender TEXT', 'subject TEXT', 'language TEXT', 'confidence NUMERIC', 'translate_subject TEXT' ])
-                database.dropTable(connection, 'languages')
-                database.createTable(connection, 'languages', ['language TEXT', 'quantity INT'])
-                database.dropTable(connection, 'countries')
-                database.createTable(connection, 'countries', ['code TEXT', 'country TEXT', 'quantity INT'])
-            if(args[2] == "loaddata"):
-                database.truncateTable(connection, 'languages')
-                loadLanguages(connection)
-                database.truncateTable(connection, 'countries')
-                loadCountries(connection)
-            connection.close()
-    
-    if(args[1] == "process"):
-        print()
-        #preProcess()
-   
-def loadLanguages(connection):
-    LanguagesCleaned = list(dict.fromkeys(constants.LANGUAGES))
-    for i in LanguagesCleaned:
-        database.insert(connection, 'languages', [f"\"{i}\"", "'0'"])
-
-def loadCountries(connection):
-    for i in constants.COUNTRIES:
-        database.insert(connection, 'countries', [f"'{i}'", f"\"{constants.COUNTRIES[i]}\"", "'0'"])
-
-def incrementCountry(connection, code):
-    country = database.searchInTable(connection, 'countries', 'code', code)
-    country_name = constants.COUNTRIES.get(code) or ""
-    if(country is None):
-        database.insert(connection, 'countries', [f"'{code}'", f"\"{country_name}\"", "'1'"])
+def incrementCountry(countriesTable, code):
+    country = countriesTable.find_one({"code": code})
+    if(country == None):
+        countriesTable.insert_one({"code": code, "name": "", "quantity": 1})
     else:
-        quantity = int(country['quantity']) + 1
-        database.update(connection, 'countries', {'quantity': f'{quantity}'}, {'code': code})
+        quantity = country["quantity"]
+        quantity = quantity + 1
+        countriesTable.update_one({"_id": country["_id"]}, { "$set": { "quantity": quantity } })
 
-def incrementLanguage(connection, lang):
-    language = database.searchInTable(connection, 'languages', 'language', lang)
-    if(language is None):
-        database.insert(connection, 'languages', [f"\"{lang}\"", "'1'"])
+def incrementLanguage(languagesTable, lang, code):
+    language = languagesTable.find_one({"code": code})
+    if(language == None):
+        languagesTable.insert_one({"name": lang, "code": code, "quantity": 1})
     else:
-        quantity = int(language['quantity']) + 1
-        database.update(connection, 'languages', {'quantity': f'{quantity}'}, {'language': lang})
+        quantity = language["quantity"]
+        quantity = quantity + 1
+        languagesTable.update_one({"_id": language['_id']}, { "$set": {"quantity": quantity } })
 
-def insertData(connection, date, ip, domain, country, sender, subject, language, confidence, translate_subject):
-    database.insert(connection, 'data', [f"\"{date}\"", f"\"{ip}\"", f"\"{domain}\"", f"\"{country}\"", f"\"{sender}\"", f"\"{subject}\"", f"\"{language}\"", f"\"{confidence}\"", f"\"{translate_subject}\""])
+def log(filesTable, file, rows, time):
+    filesTable.insert_one({'file': file, 'rows': rows, 'time': time})
+
+
+def insertData(dataTable, date, ip, domain, country, sender, subject, language, confidence):
+    dataTable.insert_one({'date': date, 'ip': ip, 'domain': domain, 'country': country, 'sender': sender, 'subject':subject, 'language': language, 'confidence': confidence, 'translate_subject': '' })
 
 #@jit
 def main():
-
     list_csvs = glob("./Feeds/**/*.csv",recursive = True)
-
-    #subdirectories = utils.getPathFolders(constants.PATH)
-
     for file in list_csvs:
         process(file)
-        print(f'\t{file}')
-
-#df = pandas.read_csv('./Feeds/20220325-spam_account-AR.csv', engine="pyarrow")
-#print(df)
+        #print(f'\t{file}')
 
 
 """ HEADERS
@@ -105,37 +63,40 @@ def main():
 # Provider [15]
 """
 def process(file):
-    
-    with open(file) as csv_file:
-        #connection = database.connect()
-        start_time_file = time.time()
+    client = MongoClient()
+    db = client.spam_relay1
+    countriesTable = db.countries
+    languagesTable = db.languages
+    dataTable = db.processed_data
+    filesTable = db.log_files
 
+    with open(file) as csv_file:
+        start_time_file = time.time()
         csv_reader = csv.reader(csv_file, delimiter=',')
         line_count = 0
         try:
             for row in csv_reader:
                 if line_count == 0:
-                    # print(f'Column names are {", ".join(row)}')
                     line_count += 1
                 else:
-                    #print(f'\t FROM: {row[8]} / IP: {row[2]} / SUBJECT: {row[9]}.')
-                    #incrementCountry(connection, row[5])
-                    detector = Detector(utils.remove_bad_chars(row[9]), quiet=True)
-                    #incrementLanguage(connection, detector.language.name)
-                    #insertData(connection, row[1], row[2], row[7], row[5], row[8], utils.remove_bad_chars(row[9]).replace("\"", "\'"), detector.language.name, detector.language.confidence, '')
-                    #print(f'\t', detector.language, '\n')
+                    #print(f'\t FROM: {row[8]} / IP: {row[2]} / SUBJECT: {row[9]}')
+                    incrementCountry(countriesTable, row[5])
+                    #clean_subject = utils.remove_bad_chars(row[9])
+                    clean_subject = utils.remove_bad_chars(row[7])
+                    detector = Detector(clean_subject, quiet=True)
+                    #print(f'\t {detector.language.name} - {detector.language.confidence}')
+                    incrementLanguage(languagesTable, detector.language.name, detector.language.code)
+                    #insertData(dataTable, row[1], row[2], row[7], row[5], row[8], clean_subject, detector.language.name, detector.language.confidence)
+                    insertData(dataTable, row[1], row[2], "", row[5], "", clean_subject, detector.language.name, detector.language.confidence)
                     line_count += 1
-            #database.disconnect(connection)
         except csv.Error:
-            #database.disconnect(connection)
             print(f"An exception occurred at line {csv_reader.line_num} in file {file}")
-        
-
-        
-        print(f'\tProcessed {line_count} lines.')
+        file_time = (time.time() - start_time_file) * 1000
+        log(filesTable, file, line_count, file_time)
+        client.close()
+        #print(f'\tProcessed {line_count} lines.')
     
-    print("\t--- %s ms ---" % ((time.time() - start_time_file) * 1000))
-    print()
+    #print("\t--- %s ms ---" % (file_time))
+    #print()
     
-
 main()
