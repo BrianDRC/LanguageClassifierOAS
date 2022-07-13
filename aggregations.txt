@@ -1,0 +1,8 @@
+# Get Total Time en log_files
+{
+  _id: null,
+  totalTime: {
+    $sum: "$time"
+  },
+  files: { $sum:1 }
+}

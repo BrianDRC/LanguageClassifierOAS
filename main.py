@@ -8,7 +8,7 @@ from polyglot.utils import pretty_list
 from polyglot.detect.base import logger as polyglot_logger
 from polyglot.detect.base import UnknownLanguage
 
-from numba import jit, cuda
+import numba as nb
 
 from glob import glob
 import csv
@@ -41,7 +41,7 @@ def log(filesTable, file, rows, time):
 def insertData(dataTable, date, ip, domain, country, sender, subject, language, confidence):
     dataTable.insert_one({'date': date, 'ip': ip, 'domain': domain, 'country': country, 'sender': sender, 'subject':subject, 'language': language, 'confidence': confidence, 'translate_subject': '' })
 
-#@jit
+#@nb.njit
 def main():
     list_csvs = glob("./Feeds/**/*.csv",recursive = True)
     for file in list_csvs:
@@ -64,7 +64,7 @@ def main():
 """
 def process(file):
     client = MongoClient()
-    db = client.spam_relay1
+    db = client.spam_relay2 if (file.find("spam_relay2") != -1) else client.spam_relay4
     countriesTable = db.countries
     languagesTable = db.languages
     dataTable = db.processed_data
@@ -80,14 +80,17 @@ def process(file):
                     line_count += 1
                 else:
                     #print(f'\t FROM: {row[8]} / IP: {row[2]} / SUBJECT: {row[9]}')
-                    incrementCountry(countriesTable, row[5])
+                    clean_date      = row[1]
+                    clean_ip        = row[2]
+                    clean_country   = row[5]
+                    clean_subject   = utils.remove_bad_chars(row[7])
+                    incrementCountry(countriesTable, clean_country)
                     #clean_subject = utils.remove_bad_chars(row[9])
-                    clean_subject = utils.remove_bad_chars(row[7])
                     detector = Detector(clean_subject, quiet=True)
                     #print(f'\t {detector.language.name} - {detector.language.confidence}')
                     incrementLanguage(languagesTable, detector.language.name, detector.language.code)
                     #insertData(dataTable, row[1], row[2], row[7], row[5], row[8], clean_subject, detector.language.name, detector.language.confidence)
-                    insertData(dataTable, row[1], row[2], "", row[5], "", clean_subject, detector.language.name, detector.language.confidence)
+                    insertData(dataTable, clean_date, clean_ip, "", clean_country, "", clean_subject, detector.language.name, detector.language.confidence)
                     line_count += 1
         except csv.Error:
             print(f"An exception occurred at line {csv_reader.line_num} in file {file}")
