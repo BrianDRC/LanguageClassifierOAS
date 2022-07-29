@@ -1,14 +1,14 @@
-import time
 
 import utils
+
+import time
+
 from pymongo import MongoClient
 
 from polyglot.detect import Detector
 from polyglot.utils import pretty_list
 from polyglot.detect.base import logger as polyglot_logger
 from polyglot.detect.base import UnknownLanguage
-
-import numba as nb
 
 from glob import glob
 import csv
@@ -63,8 +63,10 @@ def main():
 # Provider [15]
 """
 def process(file):
+    folders = file.split("/")
+    #client = MongoClient(username="root", password="12345", authSource="admin")
     client = MongoClient()
-    db = client.spam_relay2 if (file.find("spam_relay2") != -1) else client.spam_relay4
+    db = client[folders[2]]
     countriesTable = db.countries
     languagesTable = db.languages
     dataTable = db.processed_data
@@ -80,26 +82,23 @@ def process(file):
                     line_count += 1
                 else:
                     #print(f'\t FROM: {row[8]} / IP: {row[2]} / SUBJECT: {row[9]}')
+                    db = client.spam_account if (file.find("spam_account") != -1) else client.spam_relay4
                     clean_date      = row[1]
                     clean_ip        = row[2]
                     clean_country   = row[5]
-                    clean_subject   = utils.remove_bad_chars(row[7])
+                    clean_domain    = row[7] if (len(row) == 16) else "" 
+                    clean_sender    = row[8] if (len(row) == 16) else ""
+                    clean_subject   = utils.remove_bad_chars(row[9]) if (len(row) == 16) else utils.remove_bad_chars(row[7])
                     incrementCountry(countriesTable, clean_country)
-                    #clean_subject = utils.remove_bad_chars(row[9])
                     detector = Detector(clean_subject, quiet=True)
                     #print(f'\t {detector.language.name} - {detector.language.confidence}')
                     incrementLanguage(languagesTable, detector.language.name, detector.language.code)
-                    #insertData(dataTable, row[1], row[2], row[7], row[5], row[8], clean_subject, detector.language.name, detector.language.confidence)
-                    insertData(dataTable, clean_date, clean_ip, "", clean_country, "", clean_subject, detector.language.name, detector.language.confidence)
+                    insertData(dataTable, clean_date, clean_ip, clean_domain, clean_country, clean_sender, clean_subject, detector.language.name, detector.language.confidence)
                     line_count += 1
         except csv.Error:
             print(f"An exception occurred at line {csv_reader.line_num} in file {file}")
         file_time = (time.time() - start_time_file) * 1000
         log(filesTable, file, line_count, file_time)
         client.close()
-        #print(f'\tProcessed {line_count} lines.')
-    
-    #print("\t--- %s ms ---" % (file_time))
-    #print()
-    
+
 main()
