@@ -14,7 +14,8 @@ from polyglot.detect.base import UnknownLanguage
 
 polyglot_logger.setLevel("ERROR")
 load_dotenv()
-ENVIRONMENT = os.getenv('ENVIRONMENT')
+ENVIRONMENT = os.getenv("ENVIRONMENT")
+REMOVE_FILES_AT_END = True if (os.getenv("REMOVE_FILES_AT_END") == "true") else False
 
 def incrementCountry(countriesTable, code):
     country = countriesTable.find_one({"code": code})
@@ -37,17 +38,15 @@ def incrementLanguage(languagesTable, lang, code):
 def log(filesTable, file, rows, time):
     filesTable.insert_one({'file': file, 'rows': rows, 'time': time})
 
-
 def insertData(dataTable, date, ip, domain, country, sender, subject, language, confidence):
     dataTable.insert_one({'date': date, 'ip': ip, 'domain': domain, 'country': country, 'sender': sender, 'subject':subject, 'language': language, 'confidence': confidence, 'translate_subject': '' })
 
-#@nb.njit
 def main():
     list_csvs = glob("./Feeds/**/*.csv",recursive = True)
     for file in list_csvs:
         process(file)
-        #print(f'\t{file}')
-
+        if(REMOVE_FILES_AT_END):
+            os.remove(file)
 
 """ HEADERS
 # CSIRTAmericas Observation time [0],
@@ -93,7 +92,6 @@ def process(file):
                     clean_subject   = utils.remove_bad_chars(row[9]) if (len(row) == 16) else utils.remove_bad_chars(row[7])
                     incrementCountry(countriesTable, clean_country)
                     detector = Detector(clean_subject, quiet=True)
-                    #print(f'\t {detector.language.name} - {detector.language.confidence}')
                     incrementLanguage(languagesTable, detector.language.name, detector.language.code)
                     insertData(dataTable, clean_date, clean_ip, clean_domain, clean_country, clean_sender, clean_subject, detector.language.name, detector.language.confidence)
                     line_count += 1
