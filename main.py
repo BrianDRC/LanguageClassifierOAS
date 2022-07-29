@@ -1,20 +1,20 @@
 
 import utils
-
 import time
+import csv
+import os
 
+from dotenv import load_dotenv
 from pymongo import MongoClient
+from glob import glob
 
 from polyglot.detect import Detector
-from polyglot.utils import pretty_list
 from polyglot.detect.base import logger as polyglot_logger
 from polyglot.detect.base import UnknownLanguage
 
-from glob import glob
-import csv
-#import pandas
-
 polyglot_logger.setLevel("ERROR")
+load_dotenv()
+ENVIRONMENT = os.getenv('ENVIRONMENT')
 
 def incrementCountry(countriesTable, code):
     country = countriesTable.find_one({"code": code})
@@ -64,8 +64,10 @@ def main():
 """
 def process(file):
     folders = file.split("/")
-    #client = MongoClient(username="root", password="12345", authSource="admin")
-    client = MongoClient()
+    if(ENVIRONMENT == "dev"):
+        client = MongoClient()
+    elif(ENVIRONMENT == "prod"):
+        client = MongoClient(username="root", password="12345", authSource="admin")
     db = client[folders[2]]
     countriesTable = db.countries
     languagesTable = db.languages
