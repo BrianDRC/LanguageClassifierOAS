@@ -1,16 +1,12 @@
-
-from itertools import count
 import utils
+import constants
 import time
 import csv
-import resource
-from os import getenv
+
 from os import scandir
 from os import getcwd
 from os import remove
-from pathlib import Path
 
-from dotenv import load_dotenv
 from pymongo import MongoClient
 from glob import glob
 from multiprocessing import Pool
@@ -20,65 +16,44 @@ from polyglot.detect.base import logger as polyglot_logger
 from polyglot.detect.base import UnknownLanguage
 
 polyglot_logger.setLevel("ERROR")
-load_dotenv()
-ENVIRONMENT = getenv("ENVIRONMENT")
-REMOVE_FILES_AT_END = True if (getenv("REMOVE_FILES_AT_END") == "true") else False
-MAX_ROWS = int(getenv("MAX_ROWS"))
-COUNTRIES = []
-LANGUAGES = []
-LOGFILES = []
-DATA = []
-
-def get_memory():
-    with open('/proc/meminfo', 'r') as mem:
-        free_memory = 0
-        for i in mem:
-            sline = i.split()
-            if str(sline[0]) in ('MemFree:', 'Buffers:', 'Cached:'):
-                free_memory += int(sline[1])
-    return free_memory
-
-def memory_limit():
-    soft, hard = resource.getrlimit(resource.RLIMIT_AS)
-    resource.setrlimit(resource.RLIMIT_AS, (get_memory() * 1024 / 2, hard))
 
 def incrementCountry(code):
-    index = next((i for i, item in enumerate(COUNTRIES) if item["code"] == code), None)
+    index = next((i for i, item in enumerate(constants.COUNTRIES) if item["code"] == code), None)
     if(index == None):
-        COUNTRIES.append({'code': code, 'name': '', 'quantity': 1})
+        constants.COUNTRIES.append({'code': code, 'name': '', 'quantity': 1})
     else:
-        COUNTRIES[index]['quantity'] += 1
+        constants.COUNTRIES[index]['quantity'] += 1
 
 def incrementLanguage(lang, code):
-    index = next((i for i, item in enumerate(LANGUAGES) if item["code"] == code), None)
+    index = next((i for i, item in enumerate(constants.LANGUAGES) if item["code"] == code), None)
     if(index == None):
-        LANGUAGES.append({'code': code, 'name': lang, 'quantity': 1})
+        constants.LANGUAGES.append({'code': code, 'name': lang, 'quantity': 1})
     else:
-        LANGUAGES[index]['quantity'] += 1
+        constants.LANGUAGES[index]['quantity'] += 1
 
 def log(file, rows, time):
-    LOGFILES.append({'file': file, 'rows': rows, 'time': time})
+    constants.LOGFILES.append({'file': file, 'rows': rows, 'time': time})
     
 def insertData(date, ip, domain, country, sender, subject, language, confidence):
-    DATA.append({'date': date, 'ip': ip, 'domain': domain, 'country': country, 'sender': sender, 'subject':subject, 'language': language, 'confidence': confidence, 'translate_subject': '' })
+    constants.DATA.append({'date': date, 'ip': ip, 'domain': domain, 'country': country, 'sender': sender, 'subject':subject, 'language': language, 'confidence': confidence, 'translate_subject': '' })
 
 def cleanLists():
-    COUNTRIES.clear()
-    LANGUAGES.clear()
-    LOGFILES.clear()
-    DATA.clear()
+    constants.COUNTRIES.clear()
+    constants.LANGUAGES.clear()
+    constants.LOGFILES.clear()
+    constants.DATA.clear()
 
 def save_processed_data(db):
     dataTable = db.processed_data
-    dataTable.insert_many(DATA)
-    DATA.clear()
+    dataTable.insert_many(constants.DATA)
+    constants.DATA.clear()
 
 def main():
     subfolders = [f.path for f in scandir(getcwd() +'/Feeds/') if f.is_dir()]
 
-    if(ENVIRONMENT == "dev"):
+    if(constants.ENVIRONMENT == "dev"):
         client = MongoClient()
-    elif(ENVIRONMENT == "prod"):
+    elif(constants.ENVIRONMENT == "prod"):
         client = MongoClient(username="root", password="12345", authSource="admin")
 
     for folder in subfolders:
@@ -87,15 +62,15 @@ def main():
         db = client[f]        
         for file in list_csvs:
             process(file, db)
-            if(REMOVE_FILES_AT_END):
+            if(constants.REMOVE_FILES_AT_END):
                 remove(file)
         filesTable = db.log_files
         countriesTable = db.countries
         languagesTable = db.languages
 
-        countriesTable.insert_many(COUNTRIES)
-        languagesTable.insert_many(LANGUAGES)
-        filesTable.insert_many(LOGFILES)
+        countriesTable.insert_many(constants.COUNTRIES)
+        languagesTable.insert_many(constants.LANGUAGES)
+        filesTable.insert_many(constants.LOGFILES)
         save_processed_data(db)
         cleanLists()
     client.close()
@@ -135,7 +110,7 @@ def process(file, db):
                     incrementLanguage(detector.language.name, detector.language.code)
                     insertData(clean_date, clean_ip, clean_domain, clean_country, clean_sender, clean_subject, detector.language.name, detector.language.confidence)
                     line_count += 1
-                    if(len(DATA) == MAX_ROWS):
+                    if(len(constants.DATA) == constants.MAX_ROWS):
                         save_processed_data(db)
         except csv.Error:
             print(f"An exception occurred at line {csv_reader.line_num} in file {file}")
