@@ -1,11 +1,13 @@
 Cython==0.29.30
 dnspython==2.2.1
+guppy3==3.1.2
 llvmlite==0.38.1
 Morfessor==2.0.6
 numba==0.55.2
 numpy==1.22.4
 pandas==1.4.2
 polyglot==16.7.4
+psutil==5.9.1
 pycld2==0.41
 PyICU==2.9
 pymongo==4.1.1
